@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Social Media Content Analyzer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.min.js"></script>
+    <script src='https://cdn.jsdelivr.net/npm/tesseract.js@2.1.5/dist/tesseract.min.js'></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            position: relative;
+            overflow-x: hidden;
+        }
+        /* Decorative Background Blobs */
+        body::before,
+        body::after {
+            content: '';
+            position: absolute;
+            z-index: -1;
+            filter: blur(100px);
+            opacity: 0.15;
+            pointer-events: none;
+        }
+        body::before {
+            width: 350px;
+            height: 350px;
+            border-radius: 9999px;
+            background-image: linear-gradient(to bottom right, #4f46e5, #a855f7);
+            top: -100px;
+            left: -150px;
+        }
+        body::after {
+            width: 450px;
+            height: 450px;
+            border-radius: 9999px;
+            background-image: linear-gradient(to top left, #ec4899, #f59e0b);
+            bottom: -150px;
+            right: -200px;
+        }
+        .drop-zone-active {
+            border-color: #4f46e5; /* indigo-600 */
+            background-color: #eef2ff; /* indigo-50 */
+        }
+        #spinner {
+            border-top-color: #6366f1; /* indigo-500 */
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+        .gradient-text {
+            background-image: linear-gradient(to right, #4f46e5, #a855f7);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        /* Custom styling for AI Analysis output */
+        #analysis-output h2 {
+            font-size: 1.25rem; /* text-xl */
+            font-weight: 600; /* font-semibold */
+            padding-bottom: 0.5rem; /* pb-2 */
+            margin-top: 1.5rem; /* mt-6 */
+            margin-bottom: 1rem; /* mb-4 */
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        #analysis-output h2:first-of-type {
+            margin-top: 0;
+        }
+        #analysis-output ul {
+            list-style-position: outside;
+            padding-left: 1.25rem; /* pl-5 */
+        }
+        #analysis-output li {
+            padding-left: 0.5rem; /* pl-2 */
+            margin-bottom: 0.75rem; /* mb-3 */
+            line-height: 1.6;
+        }
+        #analysis-output p {
+            line-height: 1.6;
+            margin-bottom: 1rem; /* mb-4 */
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+
+    <div class="container mx-auto max-w-4xl p-4 sm:p-6 lg:p-8">
+        <header class="text-center mb-10">
+            <h1 class="text-4xl sm:text-5xl font-extrabold text-slate-900 tracking-tight">
+                <span class="gradient-text">Social Media Content Analyzer</span>
+            </h1>
+            <p class="mt-4 text-lg text-slate-600">Unlock your content's potential. Get AI-powered suggestions to boost engagement.</p>
+        </header>
+
+        <main>
+            <!-- Upload Area -->
+            <div id="upload-container" class="w-full">
+                <div id="drop-zone" class="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center cursor-pointer hover:border-indigo-500 hover:bg-indigo-50 transition-all duration-300 bg-white shadow-sm group">
+                    <div class="flex flex-col items-center justify-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-16 h-16 text-slate-400 group-hover:text-indigo-500 transition-colors duration-300">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m.75 12l3 3m0 0l3-3m-3 3v-6m-1.5-9H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"></path>
+                        </svg>
+                        <p class="mt-4 text-slate-500 text-lg"><span class="font-semibold text-indigo-600">Click to upload</span> or drag and drop</p>
+                        <p class="text-sm text-slate-500 mt-2">PDF, PNG, JPG, or BMP</p>
+                    </div>
+                    <input type="file" id="file-input" class="hidden" accept=".pdf,image/*">
+                </div>
+            </div>
+
+            <!-- Loading State -->
+            <div id="loading-state" class="hidden text-center p-12 bg-white rounded-xl shadow-md">
+                <div id="spinner" class="w-12 h-12 rounded-full border-4 border-slate-200 border-t-indigo-500 animate-spin mx-auto"></div>
+                <p id="loading-text" class="mt-6 text-lg font-medium text-slate-700">Processing your file...</p>
+            </div>
+            
+             <!-- Error Message -->
+            <div id="error-message" class="hidden p-4 mt-4 text-sm text-red-800 bg-red-100 rounded-lg" role="alert">
+                <span class="font-bold">Oops! Something went wrong:</span> <span id="error-text"></span>
+            </div>
+
+            <!-- Results -->
+            <div id="results-container" class="hidden mt-8 space-y-8">
+                <!-- Extracted Text -->
+                <div class="bg-white p-6 rounded-xl shadow-lg transition-shadow duration-300 hover:shadow-xl">
+                    <h2 class="text-2xl font-bold mb-4 border-b pb-3 text-slate-800 border-slate-200">Extracted Text</h2>
+                    <div id="extracted-text" class="text-slate-700 whitespace-pre-wrap font-mono bg-slate-100 p-4 rounded-md text-sm max-h-60 overflow-y-auto"></div>
+                </div>
+
+                <!-- AI Analysis -->
+                <div class="bg-gradient-to-br from-indigo-600 to-purple-600 text-white p-6 rounded-xl shadow-lg">
+                    <h2 class="text-2xl font-bold mb-4 border-b border-indigo-400 pb-3">Engagement Analysis & Suggestions</h2>
+                    <div id="analysis-output"></div>
+                </div>
+
+                <div class="text-center pt-4">
+                    <button id="analyze-another" class="bg-indigo-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-indigo-700 transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-1">Analyze Another File</button>
+                </div>
+            </div>
+        </main>
+
+        <footer class="text-center mt-12 text-sm text-gray-500">
+            <p>Created by Ritik Vishwakarma PSIT</p>
+        </footer>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const uploadContainer = document.getElementById('upload-container');
+        const loadingState = document.getElementById('loading-state');
+        const loadingText = document.getElementById('loading-text');
+        const resultsContainer = document.getElementById('results-container');
+        const extractedTextElem = document.getElementById('extracted-text');
+        const analysisOutputElem = document.getElementById('analysis-output');
+        const analyzeAnotherBtn = document.getElementById('analyze-another');
+        const errorMessageDiv = document.getElementById('error-message');
+        const errorTextElem = document.getElementById('error-text');
+
+        // Configure pdf.js worker
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.worker.min.js`;
+
+        // --- Event Listeners ---
+        dropZone.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.classList.add('drop-zone-active'), false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.classList.remove('drop-zone-active'), false);
+        });
+
+        dropZone.addEventListener('drop', (e) => handleFiles(e.dataTransfer.files), false);
+        
+        analyzeAnotherBtn.addEventListener('click', resetUI);
+
+        // --- UI Control Functions ---
+        function showLoading(message) {
+            loadingText.textContent = message;
+            uploadContainer.classList.add('hidden');
+            resultsContainer.classList.add('hidden');
+            errorMessageDiv.classList.add('hidden');
+            loadingState.classList.remove('hidden');
+        }
+
+        function showResults(extracted, analysis) {
+            extractedTextElem.textContent = extracted || "No text could be extracted.";
+            analysisOutputElem.innerHTML = marked.parse(analysis);
+            loadingState.classList.add('hidden');
+            resultsContainer.classList.remove('hidden');
+        }
+
+        function showError(message) {
+            errorTextElem.textContent = message;
+            loadingState.classList.add('hidden');
+            uploadContainer.classList.remove('hidden'); // Show upload zone again
+            errorMessageDiv.classList.remove('hidden');
+        }
+
+        function resetUI() {
+            resultsContainer.classList.add('hidden');
+            errorMessageDiv.classList.add('hidden');
+            uploadContainer.classList.remove('hidden');
+            fileInput.value = ''; // Clear file input
+        }
+
+        // --- Core Logic ---
+        function handleFiles(files) {
+            if (files.length === 0) return;
+            const file = files[0];
+            const allowedImageTypes = ['image/jpeg', 'image/png', 'image/bmp'];
+            
+            if (file.type === 'application/pdf') {
+                extractTextFromPdf(file);
+            } else if (allowedImageTypes.includes(file.type)) {
+                extractTextFromImage(file);
+            } else {
+                showError('Unsupported file type. Please upload a PDF, PNG, JPG, or BMP file.');
+            }
+        }
+
+        async function extractTextFromPdf(file) {
+            showLoading('Extracting text from PDF...');
+            try {
+                const fileReader = new FileReader();
+                fileReader.onload = async function() {
+                    const typedarray = new Uint8Array(this.result);
+                    const pdf = await pdfjsLib.getDocument(typedarray).promise;
+                    let fullText = '';
+                    for (let i = 1; i <= pdf.numPages; i++) {
+                        const page = await pdf.getPage(i);
+                        const textContent = await page.getTextContent();
+                        fullText += textContent.items.map(item => item.str).join(' ') + '\n';
+                    }
+                    const trimmedText = fullText.trim();
+                    if (trimmedText) {
+                        analyzeText(trimmedText);
+                    } else {
+                        showError('Could not extract text. The PDF might be empty or contain only images.');
+                    }
+                };
+                fileReader.readAsArrayBuffer(file);
+            } catch (error) {
+                console.error('PDF Parsing Error:', error);
+                showError('Failed to parse the PDF file.');
+            }
+        }
+
+        async function extractTextFromImage(file) {
+            showLoading('Recognizing text from image (OCR)...');
+            try {
+                const { data: { text } } = await Tesseract.recognize(file, 'eng', {
+                    logger: m => console.log(m) 
+                });
+                if(text.trim()){
+                   analyzeText(text.trim());
+                } else {
+                   showError('Could not recognize any text in this image.');
+                }
+            } catch (error) {
+                console.error('OCR Error:', error);
+                showError('Failed to perform OCR on the image.');
+            }
+        }
+
+        async function analyzeText(text) {
+            showLoading('Analyzing content with AI...');
+            const systemPrompt = `You are an expert social media strategist. 
+Your task is to analyze the following social media post text and provide actionable suggestions to improve its engagement. 
+Focus on clarity, tone, call to action, use of hashtags, and overall impact. 
+Format your response using Markdown with clear headings for 'Overall Analysis' and 'Actionable Suggestions'. 
+            Provide suggestions as a bulleted list.`;
+            
+            const apiKey = "AIzaSyB7VqdlqvTphe8U1NEKWpZy16C_K--ocRk"; // Your API Key
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+            const payload = {
+                contents: [{ parts: [{ text: text }] }],
+                systemInstruction: {
+                    parts: [{ text: systemPrompt }]
+                },
+            };
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (!response.ok) {
+                    throw new Error(`API request failed with status ${response.status}`);
+                }
+                const result = await response.json();
+                const analysis = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                
+                if (analysis) {
+                    showResults(text, analysis);
+                } else {
+                    throw new Error('No analysis content received from the API.');
+                }
+            } catch (error) {
+                console.error('Gemini API Error:', error);
+                showError(`Failed to get analysis from AI. ${error.message}`);
+            }
+        }
+    </script>
+</body>
+</html>
+
+
